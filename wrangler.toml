@@ -1,0 +1,14 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "hf-spaces-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+# [vars] # TOKENS SHOULD BE SET AS SECRETS
+# HF_TOKEN = "" # You can set the Hugging Face Access Token here, so that every request will use this token
+# HF_TOKENS = [
+# ] # Set multiple Hugging Face Access Tokens if you need to use multiple tokens
+
+[[analytics_engine_datasets]]
+binding = "WAE"
+dataset = "hf-spaces-proxy"
