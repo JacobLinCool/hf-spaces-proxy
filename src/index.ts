@@ -51,7 +51,7 @@ async function createRequest(request: Request, env: Env, token?: string): Promis
 	const host = `${user}-${normalizedRepo}.hf.space`.toLowerCase();
 
 	let replica: string | undefined;
-	if (restPath[0] === '--replica') {
+	if (restPath[0] === '--replicas') {
 		replica = restPath[1];
 		restPath.splice(0, 2);
 	} else {
