@@ -1,12 +1,14 @@
 const workerId = Math.floor(Math.random() * 10000);
 
+const replicaCache: Record<string, [string, number]> = {};
+
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
 		console.log(`WorkerId: ${workerId}`);
 
 		try {
 			const token = selectToken(request, env);
-			const req = createRequest(request, token);
+			const req = await createRequest(request, env, token);
 			trackToken(env.WAE, token, req);
 
 			const res = await makeRequest(req);
@@ -36,7 +38,7 @@ function selectToken(request: Request, env: Env): string | undefined {
 	return token;
 }
 
-function createRequest(request: Request, token?: string): Request {
+async function createRequest(request: Request, env: Env, token?: string): Promise<Request> {
 	const url = new URL(request.url);
 	const pathnames = url.pathname.split('/').filter(Boolean);
 
@@ -48,7 +50,8 @@ function createRequest(request: Request, token?: string): Request {
 	const normalizedRepo = repo.replace(/[^a-zA-Z0-9-]/g, '-');
 	const host = `${user}-${normalizedRepo}.hf.space`.toLowerCase();
 	const preservedPath = restPath.join('/');
-	const targetUrl = new URL(`/${preservedPath}`, `https://${host}`);
+	const replica = env.DISABLE_REPLICA_RESOLVE ? undefined : await resolveReplica(user, repo);
+	const targetUrl = new URL(replica ? `/--replicas/${replica}/${preservedPath}` : `/${preservedPath}`, `https://${host}`);
 	targetUrl.search = url.search;
 	console.log(`Accessing host: ${host}`);
 	console.log(`Fetching URL: ${targetUrl.toString()}`);
@@ -101,4 +104,86 @@ function trackToken(wae?: AnalyticsEngineDataset, token?: string, req?: Request)
 		blobs: [host, req.url, country, city, colo, type],
 		doubles: [],
 	});
+}
+
+async function readSSE(res: Response, event: string, count: number): Promise<string[]> {
+	const reader = res.body?.getReader();
+	if (!reader) {
+		throw new Error('Response body is not readable');
+	}
+
+	const decoder = new TextDecoder();
+	let eventCount = 0;
+	const events: string[] = [];
+
+	let line = '';
+	let flag = false;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) {
+			break;
+		}
+
+		const text = decoder.decode(value);
+		line += text;
+		if (!line.includes('\n')) {
+			continue;
+		}
+		let [current, ...next] = line.split('\n');
+		line = next.join('\n').trim();
+
+		if (flag) {
+			events.push(current.slice(6));
+			flag = false;
+
+			eventCount++;
+			if (eventCount >= count) {
+				break;
+			}
+		}
+		if (current.startsWith(`event: ${event}`)) {
+			flag = true;
+		}
+	}
+
+	return events;
+}
+
+async function resolveReplica(user: string, repo: string): Promise<string | undefined> {
+	try {
+		const cacheKey = `${user}-${repo}`;
+		const cached = replicaCache[cacheKey];
+		if (cached && cached[1] > Date.now()) {
+			cached[1] = Date.now() + 300_000;
+			return cached[0];
+		}
+
+		const url = `https://api.hf.space/v1/${user}/${repo}/live-metrics/sse`;
+		const res = await fetch(url);
+		if (!res.ok) {
+			throw new Error(`Failed to fetch replica: ${res.statusText}`);
+		}
+
+		const events = await readSSE(res as never, 'metric', 3);
+		const metrics = events
+			.map((event) => {
+				try {
+					return JSON.parse(event);
+				} catch {
+					return undefined;
+				}
+			})
+			.filter(Boolean);
+		const replica: string | undefined = metrics[Math.floor(Math.random() * metrics.length)].replica;
+		if (!replica) {
+			throw new Error('Replica not found in metrics');
+		}
+		console.log(`Selected replica: ${replica}`);
+
+		replicaCache[cacheKey] = [replica, Date.now() + 300_000];
+		return replica;
+	} catch (e) {
+		console.error(e);
+		return undefined;
+	}
 }
