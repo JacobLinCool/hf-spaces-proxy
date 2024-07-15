@@ -49,8 +49,16 @@ async function createRequest(request: Request, env: Env, token?: string): Promis
 	const [user, repo, ...restPath] = pathnames;
 	const normalizedRepo = repo.replace(/[^a-zA-Z0-9-]/g, '-');
 	const host = `${user}-${normalizedRepo}.hf.space`.toLowerCase();
+
+	let replica: string | undefined;
+	if (restPath[0] === '--replica') {
+		replica = restPath[1];
+		restPath.splice(0, 2);
+	} else {
+		replica = env.DISABLE_REPLICA_RESOLVE ? undefined : await resolveReplica(user, repo);
+	}
+
 	const preservedPath = restPath.join('/');
-	const replica = env.DISABLE_REPLICA_RESOLVE ? undefined : await resolveReplica(user, repo);
 	const targetUrl = new URL(replica ? `/--replicas/${replica}/${preservedPath}` : `/${preservedPath}`, `https://${host}`);
 	targetUrl.search = url.search;
 	console.log(`Accessing host: ${host}`);
