@@ -4,6 +4,8 @@ This is a reverse proxy server that allows you to access Gradio APIs on Hugging 
 
 It can be useful if you want to let someone access your Gradio API without sharing the the private spaces repository.
 
+> It currently does not work for spaces with multiple replicas. If you know how to stick one user to one replica, please let me know.
+
 ## Client Usage
 
 ```py

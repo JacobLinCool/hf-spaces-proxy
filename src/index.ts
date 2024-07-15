@@ -1,5 +1,9 @@
+const workerId = Math.floor(Math.random() * 10000);
+
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
+		console.log(`WorkerId: ${workerId}`);
+
 		try {
 			const token = selectToken(request, env);
 			const req = createRequest(request, token);
@@ -42,7 +46,7 @@ function createRequest(request: Request, token?: string): Request {
 
 	const [user, repo, ...restPath] = pathnames;
 	const normalizedRepo = repo.replace(/[^a-zA-Z0-9-]/g, '-');
-	const host = `${user}-${normalizedRepo}.hf.space`;
+	const host = `${user}-${normalizedRepo}.hf.space`.toLowerCase();
 	const preservedPath = restPath.join('/');
 	const targetUrl = new URL(`/${preservedPath}`, `https://${host}`);
 	targetUrl.search = url.search;
@@ -53,6 +57,10 @@ function createRequest(request: Request, token?: string): Request {
 	if (token) {
 		req.headers.set('Authorization', `Bearer ${token}`);
 	}
+
+	req.headers.set('Host', host);
+	req.headers.set('X-Forwarded-Host', host);
+	req.headers.set('X-Forwarded-Proto', url.protocol);
 
 	return req;
 }
@@ -67,8 +75,8 @@ async function makeRequest(req: Request): Promise<Response> {
 
 	const headers = new Headers(res.headers);
 	headers.set('Access-Control-Allow-Origin', '*');
-	headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-	headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+	headers.set('Access-Control-Allow-Methods', '*');
+	headers.set('Access-Control-Allow-Headers', '*');
 
 	return new Response(res.body as never, {
 		status: res.status,
